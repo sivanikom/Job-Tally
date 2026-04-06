@@ -18,14 +18,17 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+@app.route("/")
+def home():
+    return "Job Tally API is running!"
+
 @app.route("/sync", methods=["POST"])
 def sync():
-    data  = request.json
-    today = data.get("date")
-    count = data.get("count")
+    data     = request.json
+    today    = data.get("date")
+    count    = data.get("count")
     goal_met = data.get("goalMet")
 
-    # Check if row for today exists
     q = requests.post(
         f"https://api.notion.com/v1/databases/{NOTION_DB}/query",
         headers=HEADERS,
@@ -34,7 +37,6 @@ def sync():
     results = q.json().get("results", [])
 
     if results:
-        # Update existing row
         page_id = results[0]["id"]
         r = requests.patch(
             f"https://api.notion.com/v1/pages/{page_id}",
@@ -45,7 +47,6 @@ def sync():
             }}
         )
     else:
-        # Create new row
         r = requests.post(
             "https://api.notion.com/v1/pages",
             headers=HEADERS,
@@ -65,4 +66,5 @@ def sync():
         return jsonify({"status": "error", "detail": r.text}), 500
 
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.getenv("PORT", 5000))  # Render sets PORT automatically
+    app.run(host="0.0.0.0", port=port)   # 0.0.0.0 makes it publicly accessible
