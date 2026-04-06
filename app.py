@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="*")  # allow requests from local HTML files
 
 NOTION_KEY = os.getenv("NOTION_KEY")
 NOTION_DB  = os.getenv("NOTION_DB")
@@ -22,8 +22,16 @@ HEADERS = {
 def home():
     return "Job Tally API is running!"
 
-@app.route("/sync", methods=["POST"])
+@app.route("/sync", methods=["POST", "OPTIONS"])
 def sync():
+    if request.method == "OPTIONS":
+        # Handle CORS preflight
+        response = jsonify({})
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response, 200
+
     data     = request.json
     today    = data.get("date")
     count    = data.get("count")
@@ -61,10 +69,14 @@ def sync():
         )
 
     if r.ok:
-        return jsonify({"status": "ok"})
+        response = jsonify({"status": "ok"})
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
     else:
-        return jsonify({"status": "error", "detail": r.text}), 500
+        response = jsonify({"status": "error", "detail": r.text})
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response, 500
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))  # Render sets PORT automatically
-    app.run(host="0.0.0.0", port=port)   # 0.0.0.0 makes it publicly accessible
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
