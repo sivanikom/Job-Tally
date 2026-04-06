@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Tally</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0e0e0e; --surface: #1a1a1a; --border: #2a2a2a;
+    --green: #00e676; --text: #f0f0f0; --muted: #666; --danger: #ff5252;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 2rem 1rem;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .container { position: relative; z-index: 1; width: 100%; max-width: 440px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+  .title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .date-chip { font-size: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); padding: 4px 10px; border-radius: 999px; }
+  .counter-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2.5rem 2rem; text-align: center; margin-bottom: 1rem; position: relative; overflow: hidden; transition: border-color 0.3s; }
+  .counter-wrap.goal-reached { border-color: var(--green); }
+  .counter-wrap.goal-reached::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 0%, rgba(0,230,118,0.06) 0%, transparent 70%); pointer-events: none; }
+  .count-num { font-family: 'Syne', sans-serif; font-size: 96px; font-weight: 800; line-height: 1; color: var(--text); transition: color 0.3s, transform 0.1s; display: block; }
+  .count-num.bump { transform: scale(1.08); }
+  .count-num.goal-color { color: var(--green); }
+  .goal-sub { font-size: 12px; color: var(--muted); margin-top: 8px; letter-spacing: 0.05em; }
+  .progress-wrap { margin-top: 1.5rem; background: var(--border); border-radius: 999px; height: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--green); border-radius: 999px; transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); width: 0%; }
+  .celebration { display: none; position: absolute; inset: 0; background: rgba(14,14,14,0.93); border-radius: 16px; flex-direction: column; align-items: center; justify-content: center; gap: 6px; z-index: 5; }
+  .celebration.show { display: flex; }
+  .cel-emoji { font-size: 48px; animation: bounce 0.6s ease infinite alternate; }
+  @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-8px); } }
+  .cel-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; color: var(--green); margin-top: 4px; }
+  .cel-sub { font-size: 11px; color: var(--muted); }
+  .cel-dismiss { margin-top: 12px; font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; cursor: pointer; font-family: 'DM Mono', monospace; transition: border-color 0.2s, color 0.2s; }
+  .cel-dismiss:hover { border-color: var(--green); color: var(--green); }
+  .btn-add { width: 100%; padding: 16px; font-size: 15px; font-family: 'Syne', sans-serif; font-weight: 700; letter-spacing: 0.05em; background: var(--green); color: #0e0e0e; border: none; border-radius: 12px; cursor: pointer; transition: transform 0.1s, background 0.2s; margin-bottom: 0.6rem; }
+  .btn-add:hover { background: #33eb91; }
+  .btn-add:active { transform: scale(0.97); }
+  .btn-undo { width: 100%; padding: 10px; font-size: 12px; font-family: 'DM Mono', monospace; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: color 0.2s, border-color 0.2s; margin-bottom: 1.25rem; }
+  .btn-undo:hover { color: var(--text); border-color: #444; }
+  .streak-row { display: flex; gap: 6px; margin-bottom: 1.25rem; }
+  .streak-dot { flex: 1; height: 6px; border-radius: 999px; background: var(--border); transition: background 0.3s; }
+  .streak-dot.filled { background: var(--green); }
+  .streak-dot.partial { background: #1a4a30; }
+  .status { font-size: 11px; text-align: center; color: var(--muted); min-height: 18px; }
+  .status.ok { color: var(--green); }
+  .status.err { color: var(--danger); }
+  #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 999; }
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+<div class="container">
+  <div class="header">
+    <div class="title">Job Tally</div>
+    <div class="date-chip" id="date-chip"></div>
+  </div>
+  <div class="counter-wrap" id="counter-wrap">
+    <span class="count-num" id="count-num">0</span>
+    <div class="goal-sub">applications today · goal: 15</div>
+    <div class="progress-wrap"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="celebration" id="celebration">
+      <div class="cel-emoji">🎉</div>
+      <div class="cel-title">GOAL SMASHED!</div>
+      <div class="cel-sub" id="cel-sub"></div>
+      <button class="cel-dismiss" id="cel-dismiss">keep going →</button>
+    </div>
+  </div>
+  <button class="btn-add" id="btn-add">+ APPLIED TO A JOB</button>
+  <button class="btn-undo" id="btn-undo">undo last</button>
+  <div class="streak-row" id="streak-row"></div>
+  <div class="status" id="status"></div>
+</div>
+<script>
+  const GOAL       = 15;
+  const NOTION_KEY = 'PASTE_YOUR_NOTION_KEY_HERE';
+  const NOTION_DB  = 'a78a5a7e-e5af-4532-bc94-8b9bf14b93bc';
+  const NOTION_VER = '2022-06-28';
+
+  const todayKey     = () => new Date().toLocaleDateString('en-CA');
+  const todayDisplay = () => new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const getState  = () => { try { const r = localStorage.getItem('tally_' + todayKey()); return r ? JSON.parse(r) : { count: 0 }; } catch { return { count: 0 }; } };
+  const saveState = s => localStorage.setItem('tally_' + todayKey(), JSON.stringify(s));
+
+  const getStreakDots = () => Array.from({ length: 15 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (14 - i));
+    const raw = localStorage.getItem('tally_' + d.toLocaleDateString('en-CA'));
+    const c = raw ? JSON.parse(raw).count : 0;
+    return c >= GOAL ? 'filled' : c > 0 ? 'partial' : '';
+  });
+
+  const countEl   = document.getElementById('count-num');
+  const progEl    = document.getElementById('progress-fill');
+  const wrapEl    = document.getElementById('counter-wrap');
+  const celEl     = document.getElementById('celebration');
+  const celSubEl  = document.getElementById('cel-sub');
+  const statusEl  = document.getElementById('status');
+  const streakRow = document.getElementById('streak-row');
+
+  document.getElementById('date-chip').textContent = todayDisplay();
+
+  let state = getState();
+  let celebrationShown = state.count >= GOAL;
+
+  function render() {
+    countEl.textContent = state.count;
+    progEl.style.width  = Math.min((state.count / GOAL) * 100, 100) + '%';
+    const reached = state.count >= GOAL;
+    wrapEl.classList.toggle('goal-reached', reached);
+    countEl.classList.toggle('goal-color', reached);
+    celSubEl.textContent = `you applied to ${state.count} jobs today`;
+    streakRow.innerHTML = '';
+    getStreakDots().forEach(cls => {
+      const d = document.createElement('div');
+      d.className = 'streak-dot' + (cls ? ' ' + cls : '');
+      streakRow.appendChild(d);
+    });
+  }
+
+  function setStatus(msg, cls, ms = 3000) {
+    statusEl.textContent = msg; statusEl.className = 'status ' + cls;
+    if (ms) setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status'; }, ms);
+  }
+
+  function bump() {
+    countEl.classList.remove('bump'); void countEl.offsetWidth;
+    countEl.classList.add('bump'); setTimeout(() => countEl.classList.remove('bump'), 150);
+  }
+
+  async function syncNotion(count) {
+    const today = todayKey(); const goalMet = count >= GOAL;
+    setStatus('syncing to notion…', '', 0);
+    try {
+      const qRes = await fetch(`https://api.notion.com/v1/databases/${NOTION_DB}/query`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + NOTION_KEY, 'Notion-Version': NOTION_VER, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filter: { property: 'Date', title: { equals: today } } })
+      });
+      if (!qRes.ok) throw new Error('query');
+      const qData = await qRes.json();
+
+      if (qData.results.length > 0) {
+        const uRes = await fetch(`https://api.notion.com/v1/pages/${qData.results[0].id}`, {
+          method: 'PATCH',
+          headers: { 'Authorization': 'Bearer ' + NOTION_KEY, 'Notion-Version': NOTION_VER, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ properties: { 'Applications': { number: count }, 'Goal Met?': { checkbox: goalMet } } })
+        });
+        if (!uRes.ok) throw new Error('update');
+      } else {
+        const cRes = await fetch('https://api.notion.com/v1/pages', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + NOTION_KEY, 'Notion-Version': NOTION_VER, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            parent: { database_id: NOTION_DB },
+            properties: {
+              'Date':         { title: [{ text: { content: today } }] },
+              'Applications': { number: count },
+              'Goal Met?':    { checkbox: goalMet }
+            }
+          })
+        });
+        if (!cRes.ok) throw new Error('create');
+      }
+      setStatus('✓ saved to notion', 'ok');
+    } catch { setStatus('notion sync failed · count saved locally', 'err'); }
+  }
+
+  function fireConfetti() {
+    const canvas = document.getElementById('confetti'); const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    const colors = ['#00e676','#33eb91','#69f0ae','#00bcd4','#ff5252','#ffd740','#e040fb'];
+    const pieces = Array.from({ length: 150 }, () => ({
+      x: Math.random() * canvas.width, y: -20 - Math.random() * 80,
+      w: 7 + Math.random() * 7, h: 12 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      vx: (Math.random() - 0.5) * 5, vy: 4 + Math.random() * 4,
+      rot: Math.random() * 360, rs: (Math.random() - 0.5) * 10
+    }));
+    let raf;
+    (function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      pieces.forEach(p => {
+        p.x += p.vx; p.y += p.vy; p.rot += p.rs;
+        if (p.y < canvas.height + 20) alive = true;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180);
+        ctx.fillStyle = p.color; ctx.globalAlpha = 0.85;
+        ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore();
+      });
+      if (alive) raf = requestAnimationFrame(draw);
+      else ctx.clearRect(0, 0, canvas.width, canvas.height);
+    })();
+    setTimeout(() => { cancelAnimationFrame(raf); ctx.clearRect(0, 0, canvas.width, canvas.height); }, 4500);
+  }
+
+  document.getElementById('btn-add').addEventListener('click', () => {
+    state.count++; saveState(state); bump(); render();
+    if (state.count === GOAL && !celebrationShown) {
+      celebrationShown = true;
+      setTimeout(() => { celEl.classList.add('show'); fireConfetti(); }, 200);
+    }
+    syncNotion(state.count);
+  });
+
+  document.getElementById('btn-undo').addEventListener('click', () => {
+    if (state.count > 0) { state.count--; saveState(state); render(); syncNotion(state.count); }
+  });
+
+  document.getElementById('cel-dismiss').addEventListener('click', () => celEl.classList.remove('show'));
+
+  render();
+</script>
+</body>
+</html>
