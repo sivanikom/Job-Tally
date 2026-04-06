@@ -7,25 +7,36 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins="*")  # allow requests from local HTML files
+CORS(app, origins="*")
 
 NOTION_KEY = os.getenv("NOTION_KEY")
 NOTION_DB  = os.getenv("NOTION_DB")
 NOTION_VER = "2022-06-28"
-HEADERS = {
-    "Authorization": f"Bearer {NOTION_KEY}",
-    "Notion-Version": NOTION_VER,
-    "Content-Type": "application/json"
-}
+
+def get_headers():
+    return {
+        "Authorization": f"Bearer {NOTION_KEY}",
+        "Notion-Version": NOTION_VER,
+        "Content-Type": "application/json"
+    }
 
 @app.route("/")
 def home():
     return "Job Tally API is running!"
 
+@app.route("/debug")
+def debug():
+    # Shows if env vars are loaded (hides actual key for safety)
+    return jsonify({
+        "NOTION_KEY_set": bool(NOTION_KEY),
+        "NOTION_KEY_prefix": NOTION_KEY[:10] + "..." if NOTION_KEY else None,
+        "NOTION_DB_set": bool(NOTION_DB),
+        "NOTION_DB": NOTION_DB
+    })
+
 @app.route("/sync", methods=["POST", "OPTIONS"])
 def sync():
     if request.method == "OPTIONS":
-        # Handle CORS preflight
         response = jsonify({})
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -39,7 +50,7 @@ def sync():
 
     q = requests.post(
         f"https://api.notion.com/v1/databases/{NOTION_DB}/query",
-        headers=HEADERS,
+        headers=get_headers(),
         json={"filter": {"property": "Date", "title": {"equals": today}}}
     )
     results = q.json().get("results", [])
@@ -48,7 +59,7 @@ def sync():
         page_id = results[0]["id"]
         r = requests.patch(
             f"https://api.notion.com/v1/pages/{page_id}",
-            headers=HEADERS,
+            headers=get_headers(),
             json={"properties": {
                 "Applications": {"number": count},
                 "Goal Met?":    {"checkbox": goal_met}
@@ -57,7 +68,7 @@ def sync():
     else:
         r = requests.post(
             "https://api.notion.com/v1/pages",
-            headers=HEADERS,
+            headers=get_headers(),
             json={
                 "parent": {"database_id": NOTION_DB},
                 "properties": {
